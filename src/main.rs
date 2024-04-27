@@ -6,6 +6,7 @@ use glob::glob;
 use serde::Serialize;
 use typed_floats::tf64::NonNaN;
 
+mod fetchers;
 mod nsw;
 mod nt;
 mod qld;
@@ -31,6 +32,8 @@ impl State {
 }
 
 fn main() -> Result<()> {
+    return fetchers::run();
+
     for state in [
         //
         State::NSW,
