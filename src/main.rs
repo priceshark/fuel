@@ -31,7 +31,13 @@ impl State {
 }
 
 fn main() -> Result<()> {
-    for state in [State::NSW, State::NT, State::QLD, State::WA] {
+    for state in [
+        //
+        State::NSW,
+        State::NT,
+        State::QLD,
+        State::WA,
+    ] {
         // let mut records: BTreeMap<Site, Vec<Record>> = BTreeMap::new();
         for path in glob(&format!("raw/{}/*.csv.zst", state.slug()))? {
             let path = path?;
@@ -46,12 +52,35 @@ fn main() -> Result<()> {
                 State::WA => wa::parse(data)?,
             };
             for record in output {
+                let fuel = match &*record.price.fuel {
+                    "Diesel" | "DL" => Fuel::Diesel,
+                    "Premium Diesel" | "Brand Diesel" | "PDL" => Fuel::PremiumDiesel,
+                    "Bio Diesel 20" | "B20" => Fuel::Biodiesel,
+                    "E10" | "e10" | "Ethanol 94 (E10)" => Fuel::Ethanol10,
+                    "E85" | "e85" | "Ethanol 105 (E85)" => Fuel::Ethanol85,
+                    "LPG" => Fuel::LPG,
+                    "U91" | "Unleaded 91" | "Unleaded" | "ULP" | "OPAL" | "Low Aromatic Fuel" => {
+                        Fuel::Unleaded91
+                    }
+                    "P95" | "Premium 95" | "PULP 95/96 RON" | "PULP" => Fuel::Unleaded95,
+                    "P98" | "Premium 98" | "PULP 98 RON" | "98 RON" => Fuel::Unleaded98,
+
+                    // very few, appear to be errors
+                    "Liquefied natural gas" | "CNG" | "LNG" | "EV" | "P100" => continue,
+
+                    // phased out 2006
+                    "LRP" => continue,
+
+                    x => {
+                        println!("{x}");
+                        continue;
+                    }
+                };
                 // if let Some(x) = records.get_mut(&record.site) {
                 //     x.push(record.price);
                 // } else {
                 //     records.insert(record.site, vec![record.price]);
                 // }
-                println!("{}", record.price.fuel);
             }
 
             // eprintln!("{path:?} {}", records.len());
@@ -63,6 +92,18 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+enum Fuel {
+    Diesel,
+    PremiumDiesel,
+    Biodiesel,
+    LPG,
+    Ethanol10,
+    Ethanol85,
+    Unleaded91,
+    Unleaded95,
+    Unleaded98,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Clone)]
