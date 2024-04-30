@@ -1,11 +1,14 @@
+use std::collections::BTreeMap;
+
 use anyhow::Result;
+use geo::Point;
 use serde::Deserialize;
 
-use crate::{CurrentPrice, Fuel, State};
+use crate::{CurrentPrice, Fuel, State, Station};
 
 pub const FUELS: [&str; 7] = ["ULP", "PUP", "DSL", "BDL", "LPG", "98R", "E85"];
 
-pub fn run() -> Result<Vec<CurrentPrice>> {
+pub fn prices() -> Result<Vec<CurrentPrice>> {
     let agent = crate::agent();
 
     let mut prices = Vec::new();
@@ -35,15 +38,50 @@ pub fn run() -> Result<Vec<CurrentPrice>> {
             })
         }
     }
-
     Ok(prices)
 }
 
+pub fn stations() -> Result<Vec<Station>> {
+    let agent = crate::agent();
+    let mut stations = BTreeMap::new();
+    for fuel in FUELS {
+        let data: Vec<RawStation> = agent
+            .get(&format!(
+                "https://www.fuelwatch.wa.gov.au/api/sites?fuelType={fuel}",
+            ))
+            .call()?
+            .into_json()?;
+        for station in data {
+            if !stations.contains_key(&station.id) {
+                stations.insert(
+                    station.id,
+                    Point::new(station.address.latitude, station.address.longitude),
+                );
+            }
+        }
+    }
+
+    Ok(stations
+        .into_iter()
+        .map(|(id, point)| Station {
+            state: State::WA,
+            id,
+            point,
+        })
+        .collect())
+}
+
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct RawStation {
     id: u32,
+    address: Address,
     product: Product,
+}
+
+#[derive(Deserialize)]
+struct Address {
+    latitude: f64,
+    longitude: f64,
 }
 
 #[derive(Deserialize)]

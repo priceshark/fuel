@@ -1,10 +1,10 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
+use geo::Point;
 use serde::Deserialize;
-use ureq::Agent;
 
-use crate::{CurrentPrice, Fuel, State};
+use crate::{CurrentPrice, Fuel, State, Station};
 
-pub fn run(state: State, token: &str) -> Result<Vec<CurrentPrice>> {
+pub fn prices(state: State, token: &str) -> Result<Vec<CurrentPrice>> {
     let auth = format!("fpdapi subscribertoken={token}");
     let url = match state {
         State::QLD =>"https://fppdirectapi-prod.fuelpricesqld.com.au/Price/GetSitesPrices?countryId=21&geoRegionLevel=3&geoRegionId=1",
@@ -12,8 +12,7 @@ pub fn run(state: State, token: &str) -> Result<Vec<CurrentPrice>> {
         _ => panic!("unexpected state {state:?}")
     };
 
-    // all data is returned regardless of params, only seem to be used by the client
-    let response: Response = crate::agent()
+    let response: Prices = crate::agent()
         .get(url)
         .set("authorization", &auth)
         .call()?
@@ -48,7 +47,7 @@ pub fn run(state: State, token: &str) -> Result<Vec<CurrentPrice>> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct Response {
+struct Prices {
     site_prices: Vec<Price>,
 }
 
@@ -58,5 +57,43 @@ struct Price {
     site_id: u32,
     fuel_id: u32,
     price: f64,
-    // transactiondate
+}
+
+pub fn stations(state: State, token: &str) -> Result<Vec<Station>> {
+    let auth = format!("fpdapi subscribertoken={token}");
+    let url = match state {
+        State::QLD => "https://fppdirectapi-prod.fuelpricesqld.com.au/Subscriber/GetFullSiteDetails?countryId=21&geoRegionLevel=3&geoRegionId=1",
+        State::SA => "https://fppdirectapi-prod.safuelpricinginformation.com.au/Subscriber/GetFullSiteDetails?countryId=21&geoRegionLevel=3&geoRegionId=4",
+        _ => panic!("unexpected state {state:?}")
+    };
+    let response: Sites = crate::agent()
+        .get(url)
+        .set("authorization", &auth)
+        .call()?
+        .into_json()?;
+
+    let mut stations = Vec::new();
+    for site in response.sites {
+        stations.push(Station {
+            state,
+            id: site.id,
+            point: Point::new(site.lat, site.lng),
+        })
+    }
+    Ok(stations)
+}
+
+#[derive(Deserialize)]
+struct Sites {
+    #[serde(rename = "S")]
+    sites: Vec<Site>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Site {
+    #[serde(rename = "S")]
+    id: u32,
+    lat: f64,
+    lng: f64,
 }

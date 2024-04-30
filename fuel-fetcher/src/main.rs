@@ -6,11 +6,12 @@ use std::{
 };
 
 use anyhow::Result;
+use geo::Point;
 use rusqlite::{
     types::{FromSql, FromSqlError},
     Connection, OptionalExtension, ToSql,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ureq::{Agent, AgentBuilder};
 
 mod nsw_tas;
@@ -21,17 +22,41 @@ mod wa;
 fn main() -> Result<()> {
     let auth: Auth = toml::from_str(&fs::read_to_string("auth.toml")?)?;
 
+    let mut stations = Vec::new();
+    eprintln!("Fetching NSW+TAS");
+    stations.extend(nsw_tas::stations(
+        &auth.nsw_client_id,
+        &auth.nsw_client_secret,
+    )?);
+    eprintln!("Fetching QLD");
+    stations.extend(qld_sa::stations(State::QLD, &auth.qld_token)?);
+    eprintln!("Fetching NT");
+    stations.extend(nt::stations()?);
+    eprintln!("Fetching SA");
+    stations.extend(qld_sa::stations(State::SA, &auth.sa_token)?);
+    eprintln!("Fetching WA");
+    stations.extend(wa::stations()?);
+    println!("lat,lon");
+    for station in stations {
+        let (x, y) = station.point.x_y();
+        println!("{x},{y}")
+    }
+    return Ok(());
+
     let mut prices = Vec::new();
     eprintln!("Fetching NSW+TAS");
-    prices.extend(nsw_tas::run(&auth.nsw_client_id, &auth.nsw_client_secret)?);
+    prices.extend(nsw_tas::prices(
+        &auth.nsw_client_id,
+        &auth.nsw_client_secret,
+    )?);
     eprintln!("Fetching NT");
-    prices.extend(nt::run()?);
+    prices.extend(nt::prices()?);
     eprintln!("Fetching QLD");
-    prices.extend(qld_sa::run(State::QLD, &auth.qld_token)?);
+    prices.extend(qld_sa::prices(State::QLD, &auth.qld_token)?);
     eprintln!("Fetching SA");
-    prices.extend(qld_sa::run(State::SA, &auth.sa_token)?);
+    prices.extend(qld_sa::prices(State::SA, &auth.sa_token)?);
     eprintln!("Fetching WA");
-    prices.extend(wa::run()?);
+    prices.extend(wa::prices()?);
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
     let path = Path::new("fuel.db");
@@ -109,7 +134,7 @@ struct CurrentPrice {
     price: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum State {
     NSW,
     NT,
@@ -221,6 +246,14 @@ impl FromSql for Fuel {
             .parse()
             .map_err(|_| FromSqlError::InvalidType)?)
     }
+}
+
+#[derive(Deserialize, Serialize)]
+struct Station {
+    state: State,
+    id: u32,
+    #[serde(flatten)]
+    point: Point,
 }
 
 const USER_AGENT: &str = concat!(

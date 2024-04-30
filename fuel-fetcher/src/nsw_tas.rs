@@ -1,17 +1,17 @@
 use anyhow::{bail, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use geo::Point;
 use serde::Deserialize;
 
-use crate::{CurrentPrice, Fuel, State};
+use crate::{CurrentPrice, Fuel, State, Station};
 
-pub fn run(client_id: &str, client_secret: &str) -> Result<Vec<CurrentPrice>> {
+fn data(client_id: &str, client_secret: &str) -> Result<RawData> {
     let agent = crate::agent();
     let encoded = STANDARD.encode(format!("{client_id}:{client_secret}"));
     let auth: AuthResponse = agent.get( "https://api.onegov.nsw.gov.au/oauth/client_credential/accesstoken?grant_type=client_credentials")
         .set("Authorization", &format!("Basic {encoded}"))
         .call()?
         .into_json()?;
-
     let data: RawData = agent
         .get("https://api.onegov.nsw.gov.au/FuelPriceCheck/v2/fuel/prices?states=NSW|TAS")
         .set("Authorization", &format!("Bearer {}", auth.access_token))
@@ -22,8 +22,12 @@ pub fn run(client_id: &str, client_secret: &str) -> Result<Vec<CurrentPrice>> {
         .call()?
         .into_json()?;
 
+    Ok(data)
+}
+
+pub fn prices(client_id: &str, client_secret: &str) -> Result<Vec<CurrentPrice>> {
     let mut prices = Vec::new();
-    for raw in data.prices {
+    for raw in data(client_id, client_secret)?.prices {
         let fuel = match &*raw.fueltype {
             "B20" | "EV" => continue,
             "DL" => Fuel::Diesel,
@@ -36,13 +40,8 @@ pub fn run(client_id: &str, client_secret: &str) -> Result<Vec<CurrentPrice>> {
             "U91" => Fuel::Unleaded91,
             x => bail!("unknown fuel {x}"),
         };
-        let state = match &*raw.state {
-            "NSW" => State::NSW,
-            "TAS" => State::TAS,
-            x => bail!("unexpected state {x}"),
-        };
         prices.push(CurrentPrice {
-            state,
+            state: raw.state,
             station: raw.stationcode,
             fuel,
             price: Some(raw.price),
@@ -52,6 +51,18 @@ pub fn run(client_id: &str, client_secret: &str) -> Result<Vec<CurrentPrice>> {
     Ok(prices)
 }
 
+pub fn stations(client_id: &str, client_secret: &str) -> Result<Vec<Station>> {
+    let mut stations = Vec::new();
+    for raw in data(client_id, client_secret)?.stations {
+        stations.push(Station {
+            state: raw.state,
+            id: raw.code.parse()?,
+            point: Point::new(raw.location.latitude, raw.location.longitude),
+        })
+    }
+    Ok(stations)
+}
+
 #[derive(Deserialize)]
 struct AuthResponse {
     access_token: String,
@@ -59,13 +70,27 @@ struct AuthResponse {
 
 #[derive(Deserialize)]
 struct RawData {
-    prices: Vec<Price>,
+    stations: Vec<RawStation>,
+    prices: Vec<RawPrice>,
 }
 
 #[derive(Deserialize)]
-struct Price {
+struct RawStation {
+    code: String,
+    location: Location,
+    state: State,
+}
+
+#[derive(Deserialize)]
+struct Location {
+    latitude: f64,
+    longitude: f64,
+}
+
+#[derive(Deserialize)]
+struct RawPrice {
     stationcode: u32,
-    state: String,
+    state: State,
     fueltype: String,
     price: f64,
     // "lastupdated": "17/04/2024 01:15:49"
