@@ -113,7 +113,7 @@ fn main() -> Result<()> {
                                 &now,
                                 &now,
                                 &price.state,
-                                &price.state,
+                                &price.station,
                                 &price.fuel,
                             ))?;
                         }
