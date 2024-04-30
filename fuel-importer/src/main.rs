@@ -6,7 +6,6 @@ use glob::glob;
 use serde::Serialize;
 use typed_floats::tf64::NonNaN;
 
-mod fetchers;
 mod nsw;
 mod nt;
 mod qld;
@@ -32,8 +31,6 @@ impl State {
 }
 
 fn main() -> Result<()> {
-    return fetchers::run();
-
     for state in [
         //
         State::NSW,
@@ -42,7 +39,7 @@ fn main() -> Result<()> {
         State::WA,
     ] {
         // let mut records: BTreeMap<Site, Vec<Record>> = BTreeMap::new();
-        for path in glob(&format!("raw/{}/*.csv.zst", state.slug()))? {
+        for path in glob(&format!("raw/{}/2024-*.csv.zst", state.slug()))? {
             let path = path?;
             let data = zstd::decode_all(File::open(&path)?)?;
             let data = String::from_utf8_lossy(&data).to_string();
@@ -74,11 +71,14 @@ fn main() -> Result<()> {
                     // phased out 2006
                     "LRP" => continue,
 
-                    x => {
-                        println!("{x}");
+                    _x => {
+                        // println!("{_x}");
                         continue;
                     }
                 };
+
+                println!("{}", record.site.brand);
+
                 // if let Some(x) = records.get_mut(&record.site) {
                 //     x.push(record.price);
                 // } else {

@@ -1,4 +1,7 @@
-/target
-/raw
+target
+raw
 
 *.json
+*.db
+
+auth.toml

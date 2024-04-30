@@ -1,0 +1,4 @@
+nsw_client_id = ""  # (api key)
+nsw_client_secret = "" # (api secret)
+qld_token = ""
+sa_token = ""
