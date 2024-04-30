@@ -1,11 +1,12 @@
 [package]
-name = "fuel-fetcher"
+name = "fuel"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0.82"
 base64 = "0.22.0"
+clap = { version = "4.5.4", features = ["derive"] }
 geo = { version = "0.28.0", features = ["use-serde"] }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 scraper = "0.19.0"
