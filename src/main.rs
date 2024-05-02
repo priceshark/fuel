@@ -22,6 +22,8 @@ mod wa;
 
 #[derive(Debug, Parser)]
 struct Cli {
+    #[clap(short, long)]
+    auth_file: Option<String>,
     #[clap(subcommand)]
     command: Command,
 }
@@ -34,7 +36,9 @@ enum Command {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let auth: Auth = toml::from_str(&fs::read_to_string("auth.toml")?)?;
+    let auth: Auth = toml::from_str(&fs::read_to_string(
+        cli.auth_file.as_deref().unwrap_or("auth.toml"),
+    )?)?;
 
     match cli.command {
         Command::Stations => {
