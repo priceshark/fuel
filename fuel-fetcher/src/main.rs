@@ -57,7 +57,14 @@ fn main() -> Result<()> {
             eprintln!("Fetching WA");
             stations.extend(wa::stations()?);
 
-            fs::write("stations.json", serde_json::to_string_pretty(&stations)?)?;
+            for station in stations {
+                let (x, y) = station.point.x_y();
+                let x = ureq::get(&format!("https://api.joel.net.au/gnafr/{x}/{y}"))
+                    .call()?
+                    .into_string()?;
+                println!("{x}");
+            }
+            // fs::write("stations.json", serde_json::to_string_pretty(&stations)?)?;
         }
 
         Command::Prices => {
