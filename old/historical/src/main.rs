@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fs::File, io::BufRead, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs::{self, File},
+    io::BufRead,
+    path::Path,
+};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -31,15 +36,9 @@ impl State {
 }
 
 fn main() -> Result<()> {
-    for state in [
-        //
-        State::NSW,
-        State::NT,
-        State::QLD,
-        State::WA,
-    ] {
-        // let mut records: BTreeMap<Site, Vec<Record>> = BTreeMap::new();
-        for path in glob(&format!("raw/{}/2024-*.csv.zst", state.slug()))? {
+    for state in [State::NSW, State::NT, State::QLD, State::WA] {
+        let mut records: BTreeMap<Site, Vec<Record>> = BTreeMap::new();
+        for path in glob(&format!("../../raw/{}/*.csv.zst", state.slug()))? {
             let path = path?;
             let data = zstd::decode_all(File::open(&path)?)?;
             let data = String::from_utf8_lossy(&data).to_string();
@@ -51,6 +50,10 @@ fn main() -> Result<()> {
                 State::QLD => qld::parse(data)?,
                 State::WA => wa::parse(data)?,
             };
+            if let Some(x) = output.first() {
+                println!("{} {path:?}", x.price.timestamp.date_naive().to_string());
+            }
+
             for record in output {
                 let fuel = match &*record.price.fuel {
                     "Diesel" | "DL" => Fuel::Diesel,
@@ -77,13 +80,11 @@ fn main() -> Result<()> {
                     }
                 };
 
-                println!("{}", record.site.brand);
-
-                // if let Some(x) = records.get_mut(&record.site) {
-                //     x.push(record.price);
-                // } else {
-                //     records.insert(record.site, vec![record.price]);
-                // }
+                if let Some(x) = records.get_mut(&record.site) {
+                    x.push(record.price);
+                } else {
+                    records.insert(record.site, vec![record.price]);
+                }
             }
 
             // eprintln!("{path:?} {}", records.len());

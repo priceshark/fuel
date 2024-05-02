@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use typed_floats::tf64::NonNaN;
@@ -55,27 +55,6 @@ struct RawRecord {
 // }
 
 pub fn parse(data: String) -> Result<Vec<FullRecord>> {
-    let data = if data
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .contains("Site Name")
-    {
-        // december 2018 and january 2019 use spaces in the header
-        let mut new = String::new();
-        for (i, line) in data.lines().enumerate() {
-            if i == 0 {
-                new.push_str(&line.replace(" ", "_"));
-            } else {
-                new.push_str(line);
-            }
-            new.push('\n');
-        }
-        new
-    } else {
-        data
-    };
-
     let mut output = Vec::new();
     let mut reader = csv::Reader::from_reader(data.as_bytes());
     for result in reader.deserialize() {
@@ -91,7 +70,13 @@ pub fn parse(data: String) -> Result<Vec<FullRecord>> {
             longitude: Some(record.site_longitude),
             latitude: Some(record.site_latitude),
         };
-        let timestamp = NaiveDateTime::parse_from_str(&record.date, "%d/%m/%Y %H:%M")?.and_utc();
+        let timestamp = if record.date.contains('T') {
+            NaiveDateTime::parse_from_str(&record.date, "%Y-%m-%dT%H:%M:%S")
+        } else {
+            NaiveDateTime::parse_from_str(&record.date, "%d/%m/%Y %H:%M")
+        }
+        .with_context(|| format!("Failed to parse date: {}", record.date))?
+        .and_utc();
         let price = NonNaN::try_from((record.price as f64) / 100.0)?;
         output.push(FullRecord {
             site,

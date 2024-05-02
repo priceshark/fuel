@@ -13,42 +13,18 @@ struct RawRecord {
     suburb: String,
     postcode: String,
     brand: String,
-    fuel_type: String,
+    fuel_code: String,
     price_updated_date: String,
     price: NonNaN,
 }
 
 pub fn parse(data: String) -> Result<Vec<FullRecord>> {
-    let mut new = String::new();
-    for (i, line) in data.lines().enumerate() {
-        let line = line.trim_end_matches(',');
-        match line {
-            "" => continue,
-            "Rows 1 - 82817 (All Rows)" => continue, // last row of june 2019
-            _ => (),
-        }
-
-        if new.is_empty() {
-            if line.starts_with("ServiceStationName") {
-                new.push_str(&line.replace("FuelCode", "FuelType"));
-            } else {
-                if i > 5 {
-                    bail!("Failed to find header");
-                }
-                continue; // no line break
-            }
-        } else {
-            new.push_str(line);
-        }
-        new.push('\n');
-    }
-
-    let mut reader = csv::Reader::from_reader(new.as_bytes());
+    let mut reader = csv::Reader::from_reader(data.as_bytes());
     let mut records: Vec<RawRecord> = Vec::new();
     for result in reader.deserialize() {
         let mut record: RawRecord = result?;
 
-        // fix cells that are merged above in spreadsheet, lost in csv conversion
+        // fix cells that are merged above in spreadsheet, lost in excel -> csv conversion
         if let Some(prev) = records.last() {
             if record.service_station_name.is_empty()
                 && record.address.is_empty()
@@ -63,8 +39,8 @@ pub fn parse(data: String) -> Result<Vec<FullRecord>> {
             if record.brand.is_empty() {
                 record.brand = prev.brand.clone();
             }
-            if record.fuel_type.is_empty() {
-                record.fuel_type = prev.fuel_type.clone();
+            if record.fuel_code.is_empty() {
+                record.fuel_code = prev.fuel_code.clone();
             }
             if record.price_updated_date.is_empty() {
                 record.price_updated_date = prev.price_updated_date.clone();
@@ -115,7 +91,7 @@ pub fn parse(data: String) -> Result<Vec<FullRecord>> {
             site,
             price: Record {
                 timestamp,
-                fuel: record.fuel_type,
+                fuel: record.fuel_code,
                 price: record.price,
             },
         })

@@ -45,16 +45,8 @@ struct RawRecord {
 enum Fuel {}
 
 pub fn parse(data: String) -> Result<Vec<FullRecord>> {
-    let mut new = String::new();
-    for line in data.lines() {
-        if !line.trim_matches(',').is_empty() {
-            new.push_str(line);
-            new.push('\n');
-        }
-    }
-
     let mut output = Vec::new();
-    let mut reader = csv::Reader::from_reader(new.as_bytes());
+    let mut reader = csv::Reader::from_reader(data.as_bytes());
     for result in reader.deserialize() {
         let record: RawRecord = result?;
 
