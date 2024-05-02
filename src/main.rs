@@ -52,11 +52,8 @@ fn main() -> Result<()> {
             stations.extend(qld_sa::stations(State::SA, &auth.sa_token)?);
             eprintln!("Fetching WA");
             stations.extend(wa::stations()?);
-            println!("lat,lon");
-            for station in stations {
-                let (x, y) = station.point.x_y();
-                println!("{x},{y}")
-            }
+
+            fs::write("stations.json", serde_json::to_string_pretty(&stations)?)?;
         }
 
         Command::Prices => {
@@ -84,52 +81,47 @@ fn main() -> Result<()> {
             }
 
             eprintln!("Updating DB");
+            let mut changes = 0usize;
             let tx = conn.transaction()?;
             {
                 let mut select = tx.prepare(
                     "select price from price where state = ? and station = ? and fuel = ?",
                 )?;
-                let mut  insert = tx.prepare("insert into price (state, station, fuel, price, changed_at, checked_at) values (?, ?, ?, ?, ?, ?)")?;
-                let mut changed = tx.prepare("update price set price = ?, changed_at = ?, checked_at = ? where state = ? and station = ? and fuel = ?")?;
-                let mut checked = tx.prepare(
-                    "update price set checked_at = ? where state = ? and station = ? and fuel = ?",
+                let mut insert = tx.prepare(
+                    "insert into price (state, station, fuel, updated_at, price) values (?, ?, ?, ?, ?)")
+                ?;
+                let mut history = tx.prepare(
+                    "insert into price_history (state, station, fuel, changed_at, price) values (?, ?, ?, ?, ?)"
+                )?;
+                let mut update = tx.prepare(
+                    "update price set updated_at = ?, price = ? where state = ? and station = ? and fuel = ?",
                 )?;
 
                 for price in prices {
+                    let state = price.state as u8;
+                    let fuel = price.fuel as u8;
+
                     // first option: row found?
                     // second option: fuel available?
                     let db_price: Option<Option<f64>> = select
-                        .query_row((&price.state, &price.station, &price.fuel), |row| {
-                            row.get(0)
-                        })
+                        .query_row((&state, &price.station, &fuel), |row| row.get(0))
                         .optional()?;
 
                     if let Some(db_price) = db_price {
-                        if price.price == db_price {
-                            checked.execute((&now, &price.state, &price.station, &price.fuel))?;
-                        } else {
-                            changed.execute((
-                                &price.price,
-                                &now,
-                                &now,
-                                &price.state,
-                                &price.station,
-                                &price.fuel,
-                            ))?;
+                        update.execute((&now, &price.price, &state, &price.station, &fuel))?;
+                        if price.price != db_price {
+                            changes += 1;
+                            history.execute((&state, &price.station, &fuel, &now, &price.price))?;
                         }
                     } else {
-                        insert.execute((
-                            &price.state,
-                            &price.station,
-                            &price.fuel,
-                            &price.price,
-                            &now,
-                            &now,
-                        ))?;
+                        insert.execute((&state, &price.station, &fuel, &now, &price.price))?;
+                        history.execute((&state, &price.station, &fuel, &now, &price.price))?;
                     }
                 }
             }
+
             tx.commit()?;
+            eprintln!("{changes} changes were recorded");
         }
     }
 
@@ -154,13 +146,15 @@ struct CurrentPrice {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(u8)]
 enum State {
     NSW,
     NT,
     QLD,
     SA,
     TAS,
-    WA,
+    // VIC = 5,
+    WA = 6,
 }
 
 impl State {
@@ -208,6 +202,7 @@ impl FromSql for State {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(u8)]
 enum Fuel {
     Diesel,
     PremiumDiesel,

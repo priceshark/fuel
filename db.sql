@@ -1,9 +1,18 @@
 create table price (
-    state text not null,
+    state int not null,
     station int not null,
-    fuel text not null,
+    fuel int not null,
+    updated_at int not null,
     price numeric,
-    changed_at int not null,
-    checked_at int not null,
     primary key (state, station, fuel)
 );
+
+create table price_history (
+    state int not null,
+    station int not null,
+    fuel int not null,
+    changed_at int not null,
+    price numeric
+);
+
+create index price_history_index on price_history (state, station, fuel);
