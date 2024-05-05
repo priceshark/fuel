@@ -5,7 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use geo::Point;
 use rusqlite::{
@@ -68,20 +68,49 @@ fn main() -> Result<()> {
         }
 
         Command::Prices => {
+            let mut failed = false;
             let mut prices = Vec::new();
+
             eprintln!("Fetching NSW+TAS");
-            prices.extend(nsw_tas::prices(
-                &auth.nsw_client_id,
-                &auth.nsw_client_secret,
-            )?);
+            match nsw_tas::prices(&auth.nsw_client_id, &auth.nsw_client_secret) {
+                Ok(x) => prices.extend(x),
+                Err(e) => {
+                    eprintln!("NSW+TAS failed: {e}");
+                    failed = true;
+                }
+            };
             eprintln!("Fetching NT");
-            prices.extend(nt::prices()?);
+            match nt::prices() {
+                Ok(x) => prices.extend(x),
+                Err(e) => {
+                    eprintln!("NT failed: {e}");
+                    failed = true;
+                }
+            }
             eprintln!("Fetching QLD");
-            prices.extend(qld_sa::prices(State::QLD, &auth.qld_token)?);
+            match qld_sa::prices(State::QLD, &auth.qld_token) {
+                Ok(x) => prices.extend(x),
+                Err(e) => {
+                    eprintln!("QLD failed: {e}");
+                    failed = true;
+                }
+            }
             eprintln!("Fetching SA");
-            prices.extend(qld_sa::prices(State::SA, &auth.sa_token)?);
+            match qld_sa::prices(State::SA, &auth.sa_token) {
+                Ok(x) => prices.extend(x),
+                Err(e) => {
+                    eprintln!("SA failed: {e}");
+                    failed = true;
+                }
+            }
             eprintln!("Fetching WA");
-            prices.extend(wa::prices()?);
+            match wa::prices() {
+                Ok(x) => prices.extend(x),
+                Err(e) => {
+                    eprintln!("WA failed: {e}");
+                    failed = true;
+                }
+            }
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
             let path = Path::new("fuel.db");
@@ -133,6 +162,11 @@ fn main() -> Result<()> {
 
             tx.commit()?;
             eprintln!("{changes} changes were recorded");
+
+            if failed {
+                // grafana will notify me that this systemd unit failed
+                bail!("A fetcher failed");
+            }
         }
     }
 
