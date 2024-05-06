@@ -6,4 +6,3 @@ result*
 *.db
 
 auth.toml
-nsw-token-cache.json

@@ -43,19 +43,10 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Stations => {
             let mut stations = Vec::new();
-            eprintln!("Fetching NSW+TAS");
-            stations.extend(nsw_tas::stations(
-                &auth.nsw_client_id,
-                &auth.nsw_client_secret,
-            )?);
-            eprintln!("Fetching QLD");
-            stations.extend(qld_sa::stations(State::QLD, &auth.qld_token)?);
-            eprintln!("Fetching NT");
-            stations.extend(nt::stations()?);
-            eprintln!("Fetching SA");
-            stations.extend(qld_sa::stations(State::SA, &auth.sa_token)?);
-            eprintln!("Fetching WA");
-            stations.extend(wa::stations()?);
+            for state in State::all() {
+                eprintln!("Fetching {}", state.as_str());
+                stations.extend(state.stations(&auth)?);
+            }
 
             for station in stations {
                 let (x, y) = station.point.x_y();
@@ -71,46 +62,17 @@ fn main() -> Result<()> {
             let mut failed = false;
             let mut prices = Vec::new();
 
-            eprintln!("Fetching NSW+TAS");
-            match nsw_tas::prices(&auth.nsw_client_id, &auth.nsw_client_secret) {
-                Ok(x) => prices.extend(x),
-                Err(e) => {
-                    eprintln!("NSW+TAS failed: {e}");
-                    failed = true;
-                }
-            };
-            eprintln!("Fetching NT");
-            match nt::prices() {
-                Ok(x) => prices.extend(x),
-                Err(e) => {
-                    eprintln!("NT failed: {e}");
-                    failed = true;
-                }
+            for state in State::all() {
+                eprintln!("Fetching {}", state.as_str());
+                match state.prices(&auth) {
+                    Ok(x) => prices.extend(x),
+                    Err(e) => {
+                        eprintln!("{} failed: {e}", state.as_str());
+                        failed = true;
+                    }
+                };
             }
-            eprintln!("Fetching QLD");
-            match qld_sa::prices(State::QLD, &auth.qld_token) {
-                Ok(x) => prices.extend(x),
-                Err(e) => {
-                    eprintln!("QLD failed: {e}");
-                    failed = true;
-                }
-            }
-            eprintln!("Fetching SA");
-            match qld_sa::prices(State::SA, &auth.sa_token) {
-                Ok(x) => prices.extend(x),
-                Err(e) => {
-                    eprintln!("SA failed: {e}");
-                    failed = true;
-                }
-            }
-            eprintln!("Fetching WA");
-            match wa::prices() {
-                Ok(x) => prices.extend(x),
-                Err(e) => {
-                    eprintln!("WA failed: {e}");
-                    failed = true;
-                }
-            }
+
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
             let path = Path::new("fuel.db");
@@ -175,8 +137,6 @@ fn main() -> Result<()> {
 
 #[derive(Deserialize)]
 struct Auth {
-    nsw_client_id: String,
-    nsw_client_secret: String,
     qld_token: String,
     sa_token: String,
 }
@@ -211,6 +171,33 @@ impl State {
             Self::SA => "SA",
             Self::TAS => "TAS",
             Self::WA => "WA",
+        }
+    }
+
+    pub const fn all() -> [State; 6] {
+        use State::*;
+        [NSW, NT, QLD, SA, TAS, WA]
+    }
+
+    pub fn prices(&self, auth: &Auth) -> Result<Vec<CurrentPrice>> {
+        match self {
+            Self::NSW => nsw_tas::prices(*self),
+            Self::NT => nt::prices(),
+            Self::QLD => qld_sa::prices(*self, &auth.qld_token),
+            Self::SA => qld_sa::prices(*self, &auth.sa_token),
+            Self::TAS => nsw_tas::prices(*self),
+            Self::WA => wa::prices(),
+        }
+    }
+
+    pub fn stations(&self, auth: &Auth) -> Result<Vec<Station>> {
+        match self {
+            Self::NSW => nsw_tas::stations(*self),
+            Self::NT => nt::stations(),
+            Self::QLD => qld_sa::stations(*self, &auth.qld_token),
+            Self::SA => qld_sa::stations(*self, &auth.sa_token),
+            Self::TAS => nsw_tas::stations(*self),
+            Self::WA => wa::stations(),
         }
     }
 }
