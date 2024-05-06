@@ -19,7 +19,7 @@
       in
       {
         packages.default = craneLib.buildPackage {
-          src = lib.cleanSource (craneLib.path ./.);
+          src = lib.cleanSource (craneLib.path ./fuel-fetcher);
         };
       });
 }
