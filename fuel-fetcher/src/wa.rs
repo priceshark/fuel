@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, thread::sleep, time::Duration};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use geo::Point;
 use serde::Deserialize;
 
@@ -13,12 +13,24 @@ pub fn prices() -> Result<Vec<CurrentPrice>> {
 
     let mut prices = Vec::new();
     for fuel in FUELS {
-        let data: Vec<RawStation> = agent
-            .get(&format!(
-                "https://www.fuelwatch.wa.gov.au/api/sites?fuelType={fuel}",
-            ))
-            .call()?
-            .into_json()?;
+        let mut attempt = 0;
+        let data: Vec<RawStation> = loop {
+            match agent
+                .get(&format!(
+                    "https://www.fuelwatch.wa.gov.au/api/sites?fuelType={fuel}",
+                ))
+                .call()
+            {
+                Ok(x) => break x.into_json()?,
+                Err(ureq::Error::Status(500 | 503, _)) if attempt < 3 => {
+                    attempt += 1;
+                    eprintln!("Attempt {attempt} failed");
+                    sleep(Duration::from_secs(3));
+                    continue;
+                }
+                Err(e) => bail!(e),
+            }
+        };
         let fuel = match fuel {
             "ULP" => Fuel::Unleaded91,
             "PUP" => Fuel::Unleaded95,
